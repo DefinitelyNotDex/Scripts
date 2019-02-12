@@ -1,0 +1,123 @@
+#!/usr/bin/env python
+from __future__ import absolute_import
+from __future__ import print_function
+import csv
+import sys
+
+import duo_client
+from six.moves import input
+
+
+# This script is meant to sync phone numbers in MSP Applications Duo to a customer Duo instance.
+#   This is accomplished by using Duo's get_users() API call to pull a list of users from each
+#   domain, MSP and the target customer, and comparing the usernames in each. If a match is
+#   found between an MSP username and a customer username, the script attempts to create a phone
+#   in the customer instance using attributes pulled from the MSP phone, and then assigns that
+#   phone to the user whose username matched with the MSP user.
+#
+# Known Issues:
+#   1. Customers may have a username standard that matches MSP, which can result in phones 
+#       being synced to users incorrectly
+#   2. Users with no phone number in MSP Duo will not have a number synced to the customer Duo
+#   3. Users with an existing number in the customer's Duo will not be synced from MSP
+#   4. Users with multiple accounts that utilise the same phone will break the script due to
+#       Duo's API rejecting the attempted creation of a duplicate phone. This mostly occurs
+#       with ".admin" accounts, and a check for these types of accounts is included. If 
+#       get_users() pulls a user's ".admin" account prior to their normal account this check
+#       will break. The user will need to have a phone manually added.
+#   5. Customer keys need to be manually added below, under the entry for "sync_admin_api"
+#
+# Created by Joe Szuma
+# Version 1.1 (12FEB2019)
+
+argv_iter = iter(sys.argv[1:])
+def get_next_arg(prompt):
+    try:
+        return next(argv_iter)
+    except StopIteration:
+return input(prompt)
+
+msp_admin_api = duo_client.Admin(
+        ikey=get_next_arg('MSP Admin API integration key: '),
+        skey=get_next_arg('MSP Admin API secret key: '),
+        host=get_next_arg('MSP Admin API hostname: '),
+        )
+
+sync_admin_api = duo_client.Admin(
+        ikey=get_next_arg('Target Admin API integration key: '),
+        skey=get_next_arg('Target Admin API secret key: '),
+        host=get_next_arg('Target Admin API hostname: '),
+        )
+
+msp_users = msp_admin_api.get_users()
+sync_users = sync_admin_api.get_users()
+
+user_count = 0
+dup_bool = False
+
+for msp_user in msp_users:
+    for sync_user in sync_users:
+        if (msp_user["username"] == sync_user["username"]):
+
+            user_count += 1
+
+            print("MSP username: " + msp_user["username"])
+            print("Customer username: " + sync_user["username"])
+
+            for msp_phone in msp_user["phones"]:
+                dup_bool = False
+                if (msp_phone["number"]):
+                    if (sync_user["phones"]):
+                        for sync_phone in sync_user["phones"]:
+                            print("MSP phone: " + msp_phone["number"])
+                            print("Customer phone: " + sync_phone["number"])
+                    else:
+                        print("MSP phone: " + msp_phone["number"])
+                        print("Customer phone: [!]NONE[!]")
+                        print("Syncing MSP phone(s) to Customer:")
+                        ## Check for admin users, if so test for duplicate phone numbers 
+                        ## Checking for dupes requires a second API call to catch numbers 
+                        ## that may have updated since the last API call
+                        if (sync_user["username"].endswith(".admin")):
+                            dup_users = sync_admin_api.get_users()
+                            for check_dup in dup_users:
+                                for check_dup_phone in check_dup["phones"]:
+                                    if (msp_phone["number"] == check_dup_phone["number"]):
+                                        sync_add_user_phone_dup = sync_admin_api.add_user_phone(
+                                                user_id=sync_user["user_id"],
+                                                phone_id=check_dup_phone["phone_id"],
+                                                )
+                                        dup_bool = True
+                                        print("Phone(s) synced!")
+                                        print("MSP phone: " + msp_phone["number"])
+                                        print("Customer phone: " + check_dup_phone["number"])
+                            if (dup_bool == False):
+                                sync_add_phone = sync_admin_api.add_phone(
+                                        number=msp_phone["number"],
+                                        type=msp_phone["type"],
+                                        platform=msp_phone["platform"],
+                                        )
+                                sync_add_user_phone = sync_admin_api.add_user_phone(
+                                        user_id=sync_user["user_id"],
+                                        phone_id=sync_add_phone["phone_id"],
+                                        )
+                                print("Phone(s) synced!")
+                                print("MSP phone: " + msp_phone["number"])
+                                print("Customer phone: " + sync_add_phone["number"])
+                        else:
+                            sync_add_phone = sync_admin_api.add_phone(
+                                    number=msp_phone["number"],
+                                    type=msp_phone["type"],
+                                    platform=msp_phone["platform"],
+                                    )
+                            sync_add_user_phone = sync_admin_api.add_user_phone(
+                                    user_id=sync_user["user_id"],
+                                    phone_id=sync_add_phone["phone_id"],
+                                    )
+                            print("Phone(s) synced!")
+                            print("MSP phone: " + msp_phone["number"])
+                            print("Customer phone: " + sync_add_phone["number"])
+                print("")
+
+print("[+] Sync complete!")
+print("[+] Users synced: " + str(user_count))

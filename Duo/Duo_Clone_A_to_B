@@ -1,0 +1,51 @@
+#!/usr/bin/env python
+from __future__ import absolute_import
+from __future__ import print_function
+import sys
+
+import duo_client
+from six.moves import input
+
+## This script will clone all active accounts from Duo Account A to Duo Account B.
+##
+## This script only clones user's username and realname fields, though more can be easily
+## added (see Duo's Admin API add_user() documentation).
+##
+## This is intended only for easy administration of test environments. Use at your own risk.
+##
+## Created by Joe Szuma
+## Version 1.1 (12FEB2019)
+
+argv_iter = iter(sys.argv[1:])
+def get_next_arg(prompt):
+    try:
+        return next(argv_iter)
+    except StopIteration:
+return input(prompt)
+
+a_admin_api = duo_client.Admin(
+        ikey=get_next_arg('Account A Admin API integration key: '),
+        skey=get_next_arg('Account A Admin API secret key: '),
+        host=get_next_arg('Account A Admin API hostname: '),
+        )
+
+b_admin_api = duo_client.Admin(
+        ikey=get_next_arg('Account B Admin API integration key: '),
+        skey=get_next_arg('Account B Admin API secret key: '),
+        host=get_next_arg('Account B Admin API hostname: '),
+        )
+
+a_users = a_admin_api.get_users()
+b_users = b_admin_api.get_users()
+
+user_add_count = 0
+
+for a_user in a_users:
+    if (a_user["status"] == "active"):
+        b_user = b_admin_api.add_user(
+                username=a_user["username"],
+                realname=a_user["realname"],
+                )
+        user_add_count += 1
+
+print("[+] Cloned " + str(user_add_count) + " users from Account A to Account B")

@@ -1,0 +1,52 @@
+#!/usr/bin/env python
+from __future__ import absolute_import
+from __future__ import print_function
+import sys
+
+import duo_client
+from six.moves import input
+
+## This script will delete all users and phones from a target duo account.
+## Note this will not delete all 2FA devices, just phones. Hardware tokens and Security Keys
+## still have to be manually deleted, for now. 
+##
+## This is intended only for easy administration of test environments. Use at your own risk.
+##
+## Created by Joe Szuma
+## Version 1.1 (12FEB2019)
+
+argv_iter = iter(sys.argv[1:])
+def get_next_arg(prompt):
+    try:
+        return next(argv_iter)
+    except StopIteration:
+return input(prompt)
+
+target_admin_api = duo_client.Admin(
+        ikey=get_next_arg('Target Admin API integration key: '),
+        skey=get_next_arg('Target Admin API secret key: '),
+        host=get_next_arg('Target Admin API hostname: '),
+        )
+
+## Delete all users in the target account:
+target_users = target_admin_api.get_users()
+
+user_delete_count = 0
+for target_user in target_users:
+    delete_target_user = target_admin_api.delete_user(
+            user_id=target_user["user_id"],
+            )
+    user_delete_count +=1
+
+## Delete all phones in the target account:
+target_phones = target_admin_api.get_phones()
+
+phone_delete_count = 0
+for target_phone in target_phones:
+    delete_target_phone = target_admin_api.delete_phone(
+            phone_id=target_phone["phone_id"],
+            )
+    phone_delete_count +=1
+
+print("[+] Deleted " + str(user_delete_count) + " users from target account")
+print("[+] Deleted " + str(phone_delete_count) + " phones from target account")
