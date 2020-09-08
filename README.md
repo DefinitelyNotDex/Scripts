@@ -1,2 +1,2 @@
 # Scripts
-Scripts I've written, from professionally useful to personally prized.
+Scripts I've written, mostly for personal or professional use.
